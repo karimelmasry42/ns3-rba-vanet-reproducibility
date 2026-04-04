@@ -1,0 +1,46 @@
+cff-version: 1.2.0
+message: "If you use this repository, please cite the repository itself and the related manuscript."
+title: "ns3-rba-vanet-reproducibility"
+type: software
+version: "1.0.0"
+date-released: 2026-04-04
+license: "GPL-2.0-only"
+abstract: "An ns-3 reproducibility package for packet loss and end-to-end delay scaling analysis in a reputation-based VANET authentication scenario."
+authors:
+  - family-names: "Abdelmoaty"
+    given-names: "Abdelrhman"
+  - family-names: "Ramadan"
+    given-names: "Ahmed Adel"
+  - family-names: "Elmasry"
+    given-names: "Karim"
+  - family-names: "Shawky"
+    given-names: "Mahmoud A."
+keywords:
+  - "ns-3"
+  - "VANET"
+  - "IoV"
+  - "reproducibility"
+  - "packet delay"
+  - "packet loss"
+  - "zero-knowledge proofs"
+references:
+  - type: article
+    authors:
+      - family-names: "Abdelmoaty"
+        given-names: "Abdelrhman"
+      - family-names: "Ramadan"
+        given-names: "Ahmed Adel"
+      - family-names: "Elmasry"
+        given-names: "Karim"
+      - family-names: "Shawky"
+        given-names: "Mahmoud A."
+    title: "Privacy-Preserving Reputation-Based Authentication for Real-Time VANET and IoV Using Zero-Knowledge Proofs and Blockchain"
+    year: 2026
+    note: "Preprint submitted to Elsevier."
+  - type: software
+    authors:
+      - name: "ns-3 project"
+    title: "ns-3"
+    version: "3.47"
+    url: "https://www.nsnam.org/"
+    license: "GPL-2.0-only"

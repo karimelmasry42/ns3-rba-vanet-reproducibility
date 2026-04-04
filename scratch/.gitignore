@@ -1,0 +1,4 @@
+# Ignore everything in scratch by default, except the reproducibility scenario.
+/*
+!.gitignore
+!rba-paper-scaling.cc
