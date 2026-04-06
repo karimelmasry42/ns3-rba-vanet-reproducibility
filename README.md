@@ -1,53 +1,18 @@
 # RBA VANET ns-3 Reproducibility
 
-This repository contains the ns-3 experiment files used to study packet loss and end-to-end delay for a reputation-based authentication (RBA) VANET scenario as node count increases.
+This repository contains the ns-3 overlay files used to reproduce the VANET scaling experiment for the reputation-based authentication (RBA) scheme described in the accompanying paper.
 
-It is designed as a small reproducibility repo that sits on top of a clean `ns-3-dev` checkout rather than a fork containing the full ns-3 source tree.
-
-## Repository Contents
-
-- `scratch/rba-paper-scaling.cc`: ns-3 simulation for the VANET scaling experiment
-- `tools/rba/run-scaling.sh`: automation script for the node-count sweep
-- `tools/rba/plot-scaling.py`: SVG plot generator
-- `results/rba/rba-scaling-summary.csv`: sample per-run output
-- `results/rba/rba-node-count-summary.csv`: sample aggregated output by node count
-- `results/rba/packet-loss-vs-node-count.svg`: sample packet-loss figure
-- `results/rba/end-to-end-delay-vs-node-count.svg`: sample end-to-end-delay figure
-
-Intermediate shard files used during parallel runs are not part of the public repo.
+The experiment measures wireless packet loss and authenticated end-to-end delay while the number of vehicles increases. The simulated wireless path is the proof-bearing vehicle-to-RSU exchange over IEEE 802.11p, where the vehicle acts as the prover and the RSU acts as the verifier. Trusted Authority (TA) and hybrid blockchain roles are not simulated as additional ns-3 wireless nodes and their network or execution latencies are not explicitly modeled.
 
 ## Base ns-3 Revision
 
-Use this repository with `ns-3-dev` at:
+Use this overlay with `ns-3-dev` at:
 
 ```text
 e2c9e30c6ebdfd534aa7e30f6324b5674d138b9f
 ```
 
-## Experiment Summary
-
-The simulation measures packet loss and end-to-end delay while increasing the number of vehicles from `10` to `1000`.
-
-Default scenario:
-
-- IEEE 802.11p ad hoc wireless configuration
-- PHY mode: `OfdmRate6MbpsBW10MHz`
-- `105` byte authenticated packets
-- `4` RSUs deployed along a `3000 m` road
-- `4` lanes
-- vehicle speed sampled uniformly from `15` to `20 m/s`
-- communication range of `300 m`
-- packet interval of `100 ms`
-
-Reported metrics:
-
-- `packet_loss_ratio = (tx_packets - rx_packets) / tx_packets`
-- `mean_network_delay_ms`: delay measured by ns-3 FlowMonitor
-- `mean_rba_end_to_end_delay_ms = mean_network_delay_ms + 4.467 ms + 5.956 ms`
-
-The end-to-end delay metric includes fixed prover and verifier processing costs used in the study.
-
-## Applying the Files to ns-3-dev
+## Applying The Overlay To ns-3-dev
 
 Clone `ns-3-dev`, check out the reference revision, and copy this repository's `scratch/` and `tools/` directories into that tree.
 
@@ -57,7 +22,7 @@ cd ns-3-dev
 git checkout e2c9e30c6ebdfd534aa7e30f6324b5674d138b9f
 ```
 
-Then copy the experiment files from this repo into the ns-3 checkout:
+Then copy the overlay:
 
 ```bash
 OVERLAY=/path/to/this-repo
@@ -67,9 +32,27 @@ rsync -av "$OVERLAY/scratch/" "$NS3/scratch/"
 rsync -av "$OVERLAY/tools/" "$NS3/tools/"
 ```
 
+The `scratch/` overlay includes both:
+
+- `scratch/rba-paper-scaling.cc`
+- `scratch/CMakeLists.txt`
+
+Both files must be present in the target `ns-3-dev/scratch/` directory. The top-level ns-3 `CMakeLists.txt` always runs `add_subdirectory(scratch)`, so configuration fails immediately if `scratch/CMakeLists.txt` is missing.
+
+If the target tree was previously overwritten and `scratch/CMakeLists.txt` was removed, restore it before configuring:
+
+```bash
+cp /path/to/this-repo/scratch/CMakeLists.txt /path/to/ns-3-dev/scratch/CMakeLists.txt
+cp /path/to/this-repo/scratch/rba-paper-scaling.cc /path/to/ns-3-dev/scratch/rba-paper-scaling.cc
+```
+
+No files under `src/` need to be modified.
+
 ## Build
 
-Run these commands inside the `ns-3-dev` checkout:
+Run these commands inside the `ns-3-dev` checkout.
+
+Example:
 
 ```bash
 cmake -S . -B cmake-build-rba \
@@ -81,26 +64,111 @@ cmake -S . -B cmake-build-rba \
 cmake --build cmake-build-rba --target scratch_rba-paper-scaling -j4
 ```
 
-The resulting binary is placed under `build-rba/scratch/`.
+What the commands do:
+
+- `cmake -S . -B cmake-build-rba`: configures a dedicated build directory so the RBA experiment does not interfere with other ns-3 builds
+- `-DNS3_OUTPUT_DIRECTORY=build-rba`: places the built executable under `build-rba/scratch/`
+- `-DNS3_EXAMPLES=ON`: enables scratch/example targets, including `scratch_rba-paper-scaling`
+- `-DNS3_TESTS=OFF`: skips ns-3 test binaries
+- `-DNS3_WARNINGS_AS_ERRORS=OFF`: avoids failing the build on non-fatal compiler warnings
+- `cmake --build ... --target scratch_rba-paper-scaling -j4`: builds only this experiment target using `4` parallel jobs
+
+The resulting binary is placed under `build-rba/scratch/`. On the reference environment it is typically:
+
+```bash
+build-rba/scratch/ns3.47-rba-paper-scaling-default
+```
 
 ## Single Run
+
+This command runs one simulation instance with `100` vehicles and `4` RSUs and writes one CSV row to `results/rba/single-run.csv`.
+
+Example:
 
 ```bash
 build-rba/scratch/ns3.47-rba-paper-scaling-default \
   --numVehicles=100 \
   --numRsus=4 \
-  --activeTime=1s \
-  --cleanupTime=1s \
+  --roadLength=3000 \
+  --warmupTime=1s \
+  --activeTime=4s \
+  --cleanupTime=5s \
+  --beaconInterval=100ms \
   --resultsCsv=results/rba/single-run.csv
+```
+
+What each argument controls:
+
+- `--numVehicles=100`: number of vehicle OBUs in the run
+- `--numRsus=4`: number of verifier RSUs in the run
+- `--roadLength=3000`: road length in meters
+- `--warmupTime=1s`: time before authenticated traffic starts
+- `--activeTime=4s`: duration of packet generation
+- `--cleanupTime=5s`: extra time after transmission stops so in-flight packets can be received and measured
+- `--beaconInterval=100ms`: interval between authenticated packets generated by each vehicle
+- `--resultsCsv=...`: output CSV file to append to
+
+Useful variants:
+
+- run a larger topology:
+
+```bash
+build-rba/scratch/ns3.47-rba-paper-scaling-default \
+  --numVehicles=500 \
+  --numRsus=4 \
+  --activeTime=4s \
+  --cleanupTime=5s \
+  --resultsCsv=results/rba/single-run-500.csv
+```
+
+- keep the same topology but change the packet interval:
+
+```bash
+build-rba/scratch/ns3.47-rba-paper-scaling-default \
+  --numVehicles=100 \
+  --numRsus=4 \
+  --beaconInterval=50ms \
+  --resultsCsv=results/rba/single-run-50ms.csv
 ```
 
 ## Full Sweep
 
-The sweep script builds the target if needed, runs the node-count experiment, and writes plots automatically.
+The sweep script builds the target if needed, runs the node-count experiment, writes the per-run CSV, aggregates the node-count summary, and regenerates the two SVG figures.
+
+Example with the default adaptive node-count schedule:
 
 ```bash
 chmod +x tools/rba/run-scaling.sh
 
+COUNT_START=10 \
+COUNT_END=1000 \
+RUNS=5 \
+NUM_RSUS=4 \
+ROAD_LENGTH=3000 \
+ACTIVE_TIME=4s \
+CLEANUP_TIME=5s \
+tools/rba/run-scaling.sh
+```
+
+What this example does:
+
+- starts at `10` vehicles and stops at `1000`
+- uses `5` repeated runs per node count
+- uses `4` RSUs for every run
+- uses a `3000 m` road
+- sends authenticated packets for `4 s` after a `1 s` warmup
+- leaves `5 s` of cleanup time after transmission stops
+- writes:
+  - `results/rba/rba-scaling-summary.csv`
+  - `results/rba/rba-node-count-summary.csv`
+  - `results/rba/packet-loss-vs-node-count.svg`
+  - `results/rba/end-to-end-delay-vs-node-count.svg`
+
+### Worked sweep variants
+
+Uniform sweep with a fixed `10`-vehicle step:
+
+```bash
 COUNT_START=10 \
 COUNT_END=1000 \
 COUNT_STEP=10 \
@@ -112,6 +180,84 @@ CLEANUP_TIME=5s \
 tools/rba/run-scaling.sh
 ```
 
+Adaptive sweep with explicit custom segments:
+
+```bash
+COUNT_START=10 \
+COUNT_END=1000 \
+COUNT_SEGMENTS="10:100:10 150:300:25 400:1000:100" \
+RUNS=5 \
+NUM_RSUS=4 \
+ROAD_LENGTH=3000 \
+ACTIVE_TIME=4s \
+CLEANUP_TIME=5s \
+tools/rba/run-scaling.sh
+```
+
+Explicit count list:
+
+```bash
+COUNTS="10 20 30 50 100 200 400 800 1000" \
+RUNS=5 \
+NUM_RSUS=4 \
+ROAD_LENGTH=3000 \
+ACTIVE_TIME=4s \
+CLEANUP_TIME=5s \
+tools/rba/run-scaling.sh
+```
+
+Sweep without plot generation:
+
+```bash
+COUNT_START=10 \
+COUNT_END=1000 \
+RUNS=5 \
+NUM_RSUS=4 \
+ROAD_LENGTH=3000 \
+ACTIVE_TIME=4s \
+CLEANUP_TIME=5s \
+GENERATE_PLOTS=0 \
+tools/rba/run-scaling.sh
+```
+
+Sweep while keeping FlowMonitor XML files:
+
+```bash
+COUNT_START=10 \
+COUNT_END=1000 \
+RUNS=5 \
+NUM_RSUS=4 \
+ROAD_LENGTH=3000 \
+ACTIVE_TIME=4s \
+CLEANUP_TIME=5s \
+KEEP_FLOWMON_XML=1 \
+tools/rba/run-scaling.sh
+```
+
+### Default node-count schedule
+
+The default sweep uses finer spacing at low density and larger intervals at high density:
+
+```text
+10:200:10 250:500:50 600:1000:100
+```
+
+This schedule is controlled by `COUNT_SEGMENTS`.
+
+### Sweep overrides
+
+- `COUNTS="10 20 30 100 200 400 800"`: explicit node-count list
+- `COUNT_STEP=10`: uniform linear spacing from `COUNT_START` to `COUNT_END`
+- `COUNT_SEGMENTS="10:100:10 150:300:25 400:1000:100"`: custom adaptive schedule
+- `RUNS=5`: number of repeated runs per node count
+- `NUM_RSUS=4`: number of RSUs used in every run
+- `ROAD_LENGTH=3000`: road length in meters
+- `ACTIVE_TIME=4s`: traffic generation duration
+- `CLEANUP_TIME=5s`: post-traffic measurement time
+- `KEEP_FLOWMON_XML=1`: keep FlowMonitor XML outputs
+- `GENERATE_PLOTS=0`: skip SVG generation
+- `APPEND=1`: append to an existing CSV with the same schema
+
 Outputs:
 
 - `results/rba/rba-scaling-summary.csv`
@@ -119,40 +265,170 @@ Outputs:
 - `results/rba/packet-loss-vs-node-count.svg`
 - `results/rba/end-to-end-delay-vs-node-count.svg`
 
-Optional flags:
+## What The Simulation Represents
 
-- `KEEP_FLOWMON_XML=1`: keep FlowMonitor XML outputs
-- `GENERATE_PLOTS=0`: skip SVG generation
+### Explicit ns-3 wireless nodes
 
-## Output Files
+- `numVehicles` vehicle OBUs. Default: `100`
+- `numRsus` roadside units. Default: `4`
 
-Per-run CSV columns include:
+`total_nodes` in the CSV is the number of simulated wireless nodes only:
 
-- `seed`, `run`
-- `num_vehicles`, `num_rsus`, `total_nodes`
-- `road_length_m`, `lane_count`, `lane_spacing_m`, `coverage_range_m`
-- `packet_size_bytes`, `beacon_interval_ms`, `phy_mode`
-- `tx_packets`, `rx_packets`, `lost_packets`
-- `delivery_ratio`, `packet_loss_ratio`
-- `mean_network_delay_ms`
-- `mean_rba_end_to_end_delay_ms`
+```text
+total_nodes = num_vehicles + num_rsus
+```
 
-The aggregated CSV groups rows by node count and reports mean, standard deviation, minimum, and maximum values for both loss and delay.
+### Logical protocol roles that are not instantiated as wireless nodes
 
-## Sample Results Included in This Repo
+- `1` Trusted Authority (TA)
+- `1` hybrid blockchain service layer containing the Pseudo List (PL), the RSU Key Ledger (RKL), and the `VerifyEligibility` lookup path
 
-The `results/rba/` directory contains sample CSV and SVG outputs so the expected file layout and plot format are visible directly in the public repository.
+These control-plane roles do not inject packets into the 802.11p channel in this model. They are represented only as logical protocol context through:
 
-These sample results are included for reference. To reproduce the study dataset from scratch, rerun the sweep on a clean `ns-3-dev` checkout using the commands above.
+- the authenticated packet structure carried by each vehicle transmission
+- the fixed prover processing delay of `4.467 ms`
+- the fixed verifier processing delay of `5.956 ms`
+
+### Road and radio model
+
+- highway length: `3000 m`
+- lane count: `4`
+- lane spacing: `4 m`
+- RSUs placed evenly along the road and offset by `10 m` from the first lane
+- vehicle speed sampled uniformly from `15` to `20 m/s`
+- deterministic communication range: `300 m`
+- PHY mode: `OfdmRate6MbpsBW10MHz`
+- MAC mode: 802.11p ad hoc
+
+Vehicles start uniformly distributed along the road with small position jitter. Each vehicle keeps constant velocity for the duration of the run.
+
+## Protocol Mapping Inside The Simulation
+
+The paper defines four logical entities: vehicle TPD/OBU, RSU, TA, and hybrid blockchain. The ns-3 scenario instantiates only the wireless vehicle-to-RSU leg, where the vehicle is the prover and the RSU is the verifier, and maps the protocol as follows.
+
+### Vehicle / TPD role
+
+Each vehicle represents an OBU with a TPD-backed identity and reputation state. For every authenticated transmission interval, the vehicle acts as the prover and is treated as running:
+
+- pseudonym-bearing packet construction with `pid_1` and `pid_2`
+- `ZKPR-Prove(rep_i, r_i, T)` using the Fiat-Shamir Sigma-style proof model
+- message signing with the vehicle secret key
+
+The resulting application payload is modeled as a `134` byte packet:
+
+- pseudo-identities: `66 bytes`
+- compressed Sigma proof transcript: `34 bytes`
+- freshness timestamp: `2 bytes`
+- compact ECC signature: `32 bytes`
+
+Each vehicle sends this packet every `100 ms`.
+
+### RSU role
+
+Each RSU acts as the verifier and sink for the wireless proof-bearing traffic. In protocol terms, the RSU models:
+
+- signature verification
+- `ZKPR-Verify(C_rep, T, pi)`
+- the off-chain `VerifyEligibility` verifier role described in the paper
+
+In the ns-3 implementation, each vehicle selects the nearest RSU from its initial position and sends all authenticated packets to that RSU for the whole run.
+
+### TA and hybrid blockchain role
+
+The TA and blockchain are modeled logically, not as extra 802.11p nodes. Their responsibilities are treated as pre-provisioned or off-path protocol state:
+
+- TA initialization, registration, and reputation release
+- PL storage of `pid_1 -> C_rep`
+- RKL storage for RSU authorization
+- control-plane state lookup used by `VerifyEligibility`
+- post-feedback reputation updates
+
+Those steps do not consume simulated wireless airtime in this scenario, and their network or execution latencies are not added as separate delay terms.
+
+## Simulated Data Flow
+
+For each run, the active wireless flow is:
+
+1. Vehicle `V_i`, acting as the prover, generates a proof-bearing authenticated control packet `m = <pid_1, pid_2, pi, T_R, sigma>`.
+2. `V_i` transmits `m` over 802.11p to its nearest RSU.
+3. The receiving RSU acts as the verifier for the Sigma-style ZKPR and signature.
+4. FlowMonitor measures the packet delivery and one-way network delay for that wireless hop.
+5. The reported authenticated end-to-end delay is the measured wireless delay plus the fixed vehicle-side prover cost and RSU-side verifier cost from the paper.
+
+The paper also contains V2V exchange and RSU-to-TA feedback paths. Those paths are represented logically in the protocol description, but the ns-3 experiment focuses on the wireless vehicle-prover to RSU-verifier scaling path because that is the channel-contending leg whose packet loss and delay grow with vehicle density.
+
+## Metrics
+
+The experiment reports:
+
+- `packet_loss_ratio = (tx_packets - rx_packets) / tx_packets`
+- `mean_network_delay_ms`: mean one-way FlowMonitor delay for the simulated wireless hop
+- `mean_rba_end_to_end_delay_ms = mean_network_delay_ms + 4.467 ms + 5.956 ms`
+
+The fixed processing terms come from the paper's cryptographic cost table:
+
+- vehicle-side prover: `3 T_mul = 4.467 ms`
+- RSU-side verifier: `4 T_mul = 5.956 ms`
+
+No separate TA delay, blockchain lookup delay, smart-contract execution delay, or consensus delay is added to this metric.
+
+Per-run CSV rows also include:
+
+- wall-clock start timestamp in UTC
+- wall-clock end timestamp in UTC
+- wall-clock elapsed time in seconds
+
+The aggregated node-count summary reports wall-clock totals and descriptive statistics across repeated runs for the same vehicle count.
+
+## Output Schema
+
+### Per-run CSV
+
+`rba-scaling-summary.csv` includes:
+
+- run identity: `seed`, `run`
+- topology: `num_vehicles`, `num_rsus`, `total_nodes`, `road_length_m`, `lane_count`, `lane_spacing_m`, `coverage_range_m`
+- radio and packet model: `tx_power_dbm`, `packet_size_bytes`, `pseudonym_payload_bytes`, `proof_payload_bytes`, `timestamp_payload_bytes`, `signature_payload_bytes`, `beacon_interval_ms`, `phy_mode`, `zkpr_proof_model`
+- timing window: `warmup_s`, `active_s`, `cleanup_s`
+- cryptographic delays: `prover_processing_delay_ms`, `verifier_processing_delay_ms`
+- traffic totals: `flow_count`, `tx_packets`, `rx_packets`, `lost_packets`, `delivery_ratio`, `packet_loss_ratio`, `offered_load_mbps`
+- delay metrics: `mean_network_delay_ms`, `mean_rba_end_to_end_delay_ms`
+- wall clock: `wall_clock_start_utc`, `wall_clock_end_utc`, `wall_clock_elapsed_s`
+
+### Aggregated CSV
+
+`rba-node-count-summary.csv` groups rows by `num_vehicles` and reports:
+
+- `runs`
+- packet-loss mean, standard deviation, minimum, and maximum
+- authenticated end-to-end delay mean, standard deviation, minimum, and maximum
+- wall-clock elapsed time sum, mean, standard deviation, minimum, and maximum
+
+## Sample Results In This Repository
+
+The `results/rba/` directory contains example CSV and SVG artifacts showing the expected output layout and plot format. Running the sweep in a full `ns-3-dev` checkout produces the current dataset directly from source.
+
+## Repository Contents
+
+- `scratch/rba-paper-scaling.cc`: ns-3 simulation for the wireless RBA scaling experiment
+- `scratch/CMakeLists.txt`: scratch target definition required by the ns-3 CMake build
+- `tools/rba/run-scaling.sh`: sweep runner for the vehicle-count experiment
+- `tools/rba/plot-scaling.py`: summary CSV and SVG plot generator
+- `results/rba/rba-scaling-summary.csv`: sample per-run output
+- `results/rba/rba-node-count-summary.csv`: sample aggregated output by node count
+- `results/rba/packet-loss-vs-node-count.svg`: sample packet-loss figure
+- `results/rba/end-to-end-delay-vs-node-count.svg`: sample delay figure
+
+Intermediate shard files created during large sweeps are not part of the repository.
 
 ## Citation
 
-This repository includes a `CITATION.cff` file so GitHub can generate a repository citation automatically.
+This repository includes `CITATION.cff` so GitHub can generate a software citation automatically.
 
-If you use this repository in a paper, cite:
+If this overlay is used in a publication, cite:
 
 - this repository
-- the related manuscript
+- the corresponding RBA manuscript
 - `ns-3` as the simulation platform
 
 Suggested BibTeX entries:
@@ -180,10 +456,3 @@ Suggested BibTeX entries:
   url     = {https://www.nsnam.org/}
 }
 ```
-
-## Modifications Relative to Clean ns-3-dev
-
-- added `scratch/rba-paper-scaling.cc`
-- added `tools/rba/run-scaling.sh`
-- added `tools/rba/plot-scaling.py`
-- no files under `src/` were modified

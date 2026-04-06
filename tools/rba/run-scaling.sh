@@ -11,7 +11,8 @@ PLOT_SCRIPT="${PLOT_SCRIPT:-$ROOT_DIR/tools/rba/plot-scaling.py}"
 
 COUNT_START="${COUNT_START:-10}"
 COUNT_END="${COUNT_END:-1000}"
-COUNT_STEP="${COUNT_STEP:-10}"
+COUNT_STEP="${COUNT_STEP:-}"
+COUNT_SEGMENTS="${COUNT_SEGMENTS:-10:200:10 250:500:50 600:1000:100}"
 COUNTS="${COUNTS:-}"
 RUN_START="${RUN_START:-1}"
 RUNS="${RUNS:-5}"
@@ -50,17 +51,72 @@ if [[ -z "$SIM_BIN" ]]; then
 fi
 
 COUNT_VALUES=()
+
+append_count_value() {
+  local value="$1"
+  local last_index
+  if (( value < COUNT_START || value > COUNT_END )); then
+    return
+  fi
+
+  if [[ ${#COUNT_VALUES[@]} -eq 0 ]]; then
+    COUNT_VALUES+=("$value")
+    return
+  fi
+
+  last_index=$(( ${#COUNT_VALUES[@]} - 1 ))
+  if [[ "${COUNT_VALUES[$last_index]}" != "$value" ]]; then
+    COUNT_VALUES+=("$value")
+  fi
+}
+
 if [[ -n "$COUNTS" ]]; then
   for value in $COUNTS; do
-    COUNT_VALUES+=("$value")
+    append_count_value "$value"
+  done
+elif [[ -n "$COUNT_STEP" ]]; then
+  for value in $(seq "$COUNT_START" "$COUNT_STEP" "$COUNT_END"); do
+    append_count_value "$value"
   done
 else
-  for value in $(seq "$COUNT_START" "$COUNT_STEP" "$COUNT_END"); do
-    COUNT_VALUES+=("$value")
+  for segment in $COUNT_SEGMENTS; do
+    IFS=':' read -r segment_start segment_end segment_step <<< "$segment"
+    if [[ -z "$segment_start" || -z "$segment_end" || -z "$segment_step" ]]; then
+      echo "Invalid COUNT_SEGMENTS entry: $segment" >&2
+      exit 1
+    fi
+
+    local_start="$segment_start"
+    local_end="$segment_end"
+
+    if (( local_end < COUNT_START || local_start > COUNT_END )); then
+      continue
+    fi
+
+    if (( local_start < COUNT_START )); then
+      local_start="$COUNT_START"
+    fi
+
+    if (( local_end > COUNT_END )); then
+      local_end="$COUNT_END"
+    fi
+
+    for value in $(seq "$local_start" "$segment_step" "$local_end"); do
+      append_count_value "$value"
+    done
   done
+
+  append_count_value "$COUNT_END"
+fi
+
+if [[ ${#COUNT_VALUES[@]} -eq 0 ]]; then
+  echo "No node counts selected. Check COUNT_START/COUNT_END/COUNT_STEP/COUNT_SEGMENTS." >&2
+  exit 1
 fi
 
 RUN_END=$((RUN_START + RUNS - 1))
+
+echo "Node-count schedule: ${COUNT_VALUES[*]}"
 
 for run in $(seq "$RUN_START" "$RUN_END"); do
   for vehicles in "${COUNT_VALUES[@]}"; do

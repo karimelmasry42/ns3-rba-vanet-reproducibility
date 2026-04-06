@@ -16,6 +16,24 @@ def sample_stddev(values):
     return math.sqrt(variance)
 
 
+def summarize_optional(values):
+    if not values:
+        return {
+            "sum": "",
+            "mean": "",
+            "stddev": "",
+            "min": "",
+            "max": "",
+        }
+    return {
+        "sum": sum(values),
+        "mean": mean(values),
+        "stddev": sample_stddev(values),
+        "min": min(values),
+        "max": max(values),
+    }
+
+
 def nice_axis_max(value):
     if value <= 0:
         return 1.0
@@ -104,12 +122,24 @@ def format_number(value):
     return f"{value:.3f}".rstrip("0").rstrip(".")
 
 
-def write_svg_plot(output_path, title, y_label, series, y_min, y_max, y_tick_values):
+def write_svg_plot(
+    output_path,
+    header_title,
+    subtitle,
+    x_label,
+    y_label,
+    legend_label,
+    line_color,
+    series,
+    y_min,
+    y_max,
+    y_tick_values,
+):
     width = 960
     height = 540
-    margin_left = 88
-    margin_right = 24
-    margin_top = 56
+    margin_left = 92
+    margin_right = 28
+    margin_top = 72
     margin_bottom = 76
     plot_width = width - margin_left - margin_right
     plot_height = height - margin_top - margin_bottom
@@ -131,18 +161,21 @@ def write_svg_plot(output_path, title, y_label, series, y_min, y_max, y_tick_val
     lines = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
         '<style>',
-        'text { font-family: Helvetica, Arial, sans-serif; fill: #13233a; }',
-        '.title { font-size: 24px; font-weight: 700; }',
-        '.axis-label { font-size: 16px; font-weight: 600; }',
-        '.tick { font-size: 12px; }',
-        '.grid { stroke: #d7e0ea; stroke-width: 1; }',
-        '.axis { stroke: #13233a; stroke-width: 2; }',
-        '.line { fill: none; stroke: #0b7285; stroke-width: 3; }',
-        '.marker { fill: #0b7285; }',
-        '.error { stroke: #2f4858; stroke-width: 1.5; }',
+        'text { font-family: Helvetica, Arial, sans-serif; fill: #222222; }',
+        '.header { font-size: 17px; font-weight: 400; }',
+        '.subtitle { font-size: 15px; font-weight: 400; }',
+        '.axis-label { font-size: 13px; font-weight: 400; }',
+        '.tick { font-size: 11px; }',
+        '.grid { stroke: #bdbdbd; stroke-width: 1; stroke-dasharray: 1.5 2; }',
+        '.axis { stroke: #000000; stroke-width: 1; }',
+        '.legend { font-size: 11px; }',
+        '.line { fill: none; stroke-width: 1.5; }',
+        '.marker { stroke-width: 1.2; }',
+        '.tick-mark { stroke: #000000; stroke-width: 1; }',
         '</style>',
         f'<rect width="{width}" height="{height}" fill="#ffffff"/>',
-        f'<text class="title" x="{margin_left}" y="32">{title}</text>',
+        f'<text class="header" x="{width / 2}" y="22" text-anchor="middle">{header_title}</text>',
+        f'<text class="subtitle" x="{width / 2}" y="48" text-anchor="middle">{subtitle}</text>',
     ]
 
     for tick_value in y_tick_values:
@@ -169,36 +202,79 @@ def write_svg_plot(output_path, title, y_label, series, y_min, y_max, y_tick_val
     lines.append(
         f'<line class="axis" x1="{margin_left}" y1="{margin_top}" x2="{margin_left}" y2="{height - margin_bottom}"/>'
     )
-
     lines.append(
-        f'<text class="axis-label" x="{margin_left + plot_width / 2}" y="{height - 16}" text-anchor="middle">Number of Vehicles</text>'
+        f'<line class="axis" x1="{margin_left}" y1="{margin_top}" x2="{width - margin_right}" y2="{margin_top}"/>'
     )
     lines.append(
-        f'<text class="axis-label" x="22" y="{margin_top + plot_height / 2}" text-anchor="middle" transform="rotate(-90 22 {margin_top + plot_height / 2})">{y_label}</text>'
+        f'<line class="axis" x1="{width - margin_right}" y1="{margin_top}" x2="{width - margin_right}" y2="{height - margin_bottom}"/>'
+    )
+
+    for tick_value in y_tick_values:
+        y = y_to_svg(tick_value)
+        lines.append(
+            f'<line class="tick-mark" x1="{margin_left}" y1="{y}" x2="{margin_left + 6}" y2="{y}"/>'
+        )
+        lines.append(
+            f'<line class="tick-mark" x1="{width - margin_right - 6}" y1="{y}" x2="{width - margin_right}" y2="{y}"/>'
+        )
+
+    for x_value in x_ticks:
+        x = x_to_svg(x_value)
+        lines.append(
+            f'<line class="tick-mark" x1="{x}" y1="{height - margin_bottom - 6}" x2="{x}" y2="{height - margin_bottom}"/>'
+        )
+        lines.append(
+            f'<line class="tick-mark" x1="{x}" y1="{margin_top}" x2="{x}" y2="{margin_top + 6}"/>'
+        )
+
+    lines.append(
+        f'<text class="axis-label" x="{margin_left + plot_width / 2}" y="{height - 16}" text-anchor="middle">{x_label}</text>'
+    )
+    lines.append(
+        f'<text class="axis-label" x="20" y="{margin_top + plot_height / 2}" text-anchor="middle" transform="rotate(-90 20 {margin_top + plot_height / 2})">{y_label}</text>'
     )
 
     polyline_points = " ".join(
         f"{x_to_svg(point['x'])},{y_to_svg(point['mean'])}" for point in series
     )
-    lines.append(f'<polyline class="line" points="{polyline_points}"/>')
+    lines.append(f'<polyline class="line" points="{polyline_points}" stroke="{line_color}"/>')
 
     for point in series:
         x = x_to_svg(point["x"])
         y = y_to_svg(point["mean"])
-        low = y_to_svg(max(point["mean"] - point["stddev"], y_min))
-        high = y_to_svg(min(point["mean"] + point["stddev"], y_max))
-        if point["stddev"] > 0:
-            lines.append(f'<line class="error" x1="{x}" y1="{low}" x2="{x}" y2="{high}"/>')
-            lines.append(f'<line class="error" x1="{x - 6}" y1="{low}" x2="{x + 6}" y2="{low}"/>')
-            lines.append(f'<line class="error" x1="{x - 6}" y1="{high}" x2="{x + 6}" y2="{high}"/>')
-        lines.append(f'<circle class="marker" cx="{x}" cy="{y}" r="4.5"/>')
+
+        # Draw MATLAB-like plus markers.
+        lines.append(
+            f'<line class="marker" x1="{x - 4}" y1="{y}" x2="{x + 4}" y2="{y}" stroke="{line_color}"/>'
+        )
+        lines.append(
+            f'<line class="marker" x1="{x}" y1="{y - 4}" x2="{x}" y2="{y + 4}" stroke="{line_color}"/>'
+        )
+
+    legend_text_x = width - margin_right - 120
+    legend_line_x1 = width - margin_right - 64
+    legend_line_x2 = width - margin_right - 14
+    legend_y = margin_top + 18
+    lines.append(
+        f'<text class="legend" x="{legend_text_x}" y="{legend_y + 4}" text-anchor="start">{legend_label}</text>'
+    )
+    lines.append(
+        f'<line x1="{legend_line_x1}" y1="{legend_y}" x2="{legend_line_x2}" y2="{legend_y}" stroke="{line_color}" stroke-width="2"/>'
+    )
+    marker_mid_x = (legend_line_x1 + legend_line_x2) / 2
+    lines.append(
+        f'<line class="marker" x1="{marker_mid_x - 4}" y1="{legend_y}" x2="{marker_mid_x + 4}" y2="{legend_y}" stroke="{line_color}"/>'
+    )
+    lines.append(
+        f'<line class="marker" x1="{marker_mid_x}" y1="{legend_y - 4}" x2="{marker_mid_x}" y2="{legend_y + 4}" stroke="{line_color}"/>'
+    )
 
     lines.append("</svg>")
     output_path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def aggregate_rows(input_csv):
-    groups = defaultdict(lambda: {"loss": [], "delay": []})
+    groups = defaultdict(lambda: {"loss": [], "delay": [], "wall_clock": []})
 
     with input_csv.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
@@ -206,11 +282,16 @@ def aggregate_rows(input_csv):
             node_count = int(row["num_vehicles"])
             groups[node_count]["loss"].append(float(row["packet_loss_ratio"]))
             groups[node_count]["delay"].append(float(row["mean_rba_end_to_end_delay_ms"]))
+            wall_clock_elapsed = row.get("wall_clock_elapsed_s", "")
+            if wall_clock_elapsed:
+                groups[node_count]["wall_clock"].append(float(wall_clock_elapsed))
 
     summary = []
     for node_count in sorted(groups):
         loss_values = groups[node_count]["loss"]
         delay_values = groups[node_count]["delay"]
+        wall_clock_values = groups[node_count]["wall_clock"]
+        wall_clock_summary = summarize_optional(wall_clock_values)
         summary.append(
             {
                 "num_vehicles": node_count,
@@ -223,6 +304,11 @@ def aggregate_rows(input_csv):
                 "end_to_end_delay_ms_stddev": sample_stddev(delay_values),
                 "end_to_end_delay_ms_min": min(delay_values),
                 "end_to_end_delay_ms_max": max(delay_values),
+                "wall_clock_elapsed_s_sum": wall_clock_summary["sum"],
+                "wall_clock_elapsed_s_mean": wall_clock_summary["mean"],
+                "wall_clock_elapsed_s_stddev": wall_clock_summary["stddev"],
+                "wall_clock_elapsed_s_min": wall_clock_summary["min"],
+                "wall_clock_elapsed_s_max": wall_clock_summary["max"],
             }
         )
     return summary
@@ -240,6 +326,11 @@ def write_summary_csv(output_csv, summary_rows):
         "end_to_end_delay_ms_stddev",
         "end_to_end_delay_ms_min",
         "end_to_end_delay_ms_max",
+        "wall_clock_elapsed_s_sum",
+        "wall_clock_elapsed_s_mean",
+        "wall_clock_elapsed_s_stddev",
+        "wall_clock_elapsed_s_min",
+        "wall_clock_elapsed_s_max",
     ]
 
     with output_csv.open("w", newline="", encoding="utf-8") as handle:
@@ -288,7 +379,19 @@ def main():
         target_ticks=8,
         include_zero=False,
     )
-    delay_axis_max = nice_axis_max(max(point["mean"] + point["stddev"] for point in delay_series))
+    loss_observed_min = min(point["mean"] - point["stddev"] for point in loss_series)
+    if loss_observed_min >= 0.4:
+        loss_axis_min = max(loss_axis_min, 0.4)
+        _, loss_axis_max, loss_ticks = nice_axis_bounds(
+            loss_axis_min,
+            max(point["mean"] + point["stddev"] for point in loss_series),
+            target_ticks=8,
+            include_zero=False,
+        )
+    delay_observed_max = max(point["mean"] + point["stddev"] for point in delay_series)
+    delay_axis_max = nice_axis_max(delay_observed_max)
+    if delay_observed_max <= 100.0:
+        delay_axis_max = min(delay_axis_max, 100.0)
     _, _, delay_ticks = nice_axis_bounds(
         0.0,
         delay_axis_max,
@@ -298,8 +401,12 @@ def main():
 
     write_svg_plot(
         loss_svg,
-        "Packet Loss vs Node Count",
+        "Network Performance vs Node Count",
+        "Packet Loss Ratio vs Node Count",
+        "Node Count",
         "Packet Loss Ratio",
+        "Packet Loss",
+        "#ff0000",
         loss_series,
         loss_axis_min,
         loss_axis_max,
@@ -307,8 +414,12 @@ def main():
     )
     write_svg_plot(
         delay_svg,
+        "Network Performance vs Node Count",
         "End-to-End Delay vs Node Count",
+        "Node Count",
         "End-to-End Delay (ms)",
+        "Delay",
+        "#0000ff",
         delay_series,
         0.0,
         delay_axis_max,
